@@ -152,47 +152,52 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 170e4a4d4bcdc3c4db95535bb5626025, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  midStairCells: []
   runHasTreasure: 0
+  healOnNextDungeonEnter: 0
+  currentFloor: 1
+  maxFloor: 3
   database: {fileID: 11400000, guid: 8b9b1811636ccd6409c79113276e4f08, type: 2}
-  lootTable: {fileID: 0}
+  treasurePicked: 0
+  lastStairCell: {x: 0, y: 0}
+  hasLastStairCell: 0
+  entranceStairCells: []
+  escapeStairCells: []
+  lastStairKind: 0
   ownedPermanent: []
   runLoadout: []
   runPendingLoot: []
   deathCount: 0
+  poolSize: 20
   runCandidateIds: []
   remainingChestDropIds: []
-  candidateRarityWeights:
-  - rarity: 0
-    weight: 40
-  - rarity: 1
-    weight: 30
-  - rarity: 2
-    weight: 15
-  - rarity: 3
-    weight: 10
-  - rarity: 4
-    weight: 5
-  candidateGuarantees: []
-  chestLootProfiles: []
-  poolSize: 20
-  poolIds: []
-  remainingSpawnIds: []
-  cycleIndex: 0
   startingOwnedIds: []
   startingUnlockOnlyIds: []
   applyStartingBonusOnce: 1
-  keepStartingItemsInsidePoolSize: 1
   hasRunSave: 0
   runSave:
     sceneName: GameScene
     timer: 0
     deathCount: 0
+    treasurePicked: 0
+    healOnNextDungeonEnter: 0
+    hasLastStairCell: 0
+    lastStairCell:
+      x: 0
+      y: 0
+    lastStairKind: 0
+    midStairCells: []
     runLoadoutIds: []
     runPendingLootIds: []
+    entranceStairCells: []
+    escapeStairCells: []
     runCandidateIds: []
+    runDiscoveredIds: []
     remainingChestDropIds: []
+    floorSeeds: []
+    openedChestsByFloor: []
+    currentFloor: 1
     seed: 0
-    openedChests: []
     runHasTreasure: 0
 --- !u!4 &43373811
 Transform:
@@ -807,50 +812,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1540667516
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1540667518}
-  - component: {fileID: 1540667517}
-  m_Layer: 0
-  m_Name: SceneLoader
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1540667517
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1540667516}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fb46ceb3cc0799c40a81a8323223af40, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!4 &1540667518
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1540667516}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 225.75723, y: 214.5286, z: -2.9363391}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1706737978
 GameObject:
   m_ObjectHideFlags: 0
@@ -1036,7 +997,6 @@ SceneRoots:
   - {fileID: 1183589770}
   - {fileID: 1071701736}
   - {fileID: 786257586}
-  - {fileID: 1540667518}
   - {fileID: 1706737980}
   - {fileID: 1502922956}
   - {fileID: 43373811}

@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -24,7 +23,6 @@ public class CaveGenerator : MonoBehaviour
     public Tile epicChestTile;
     public Tile legendaryChestTile;
 
-    // 宝箱座標ごとのレアリティ
     public Dictionary<Vector2Int, ItemRarity> chestRarityByCell = new Dictionary<Vector2Int, ItemRarity>();
 
     [Header("Enemy Settings")]
@@ -40,36 +38,34 @@ public class CaveGenerator : MonoBehaviour
     int[,] map;
 
     [Header("Seed")]
-    public bool useRunSeed = true;     // ON推奨：ラン中は固定seedで再現
-    public int floorSeedStep = 10007;  // floorごとの差分（適当な素数でOK）
+    public bool useRunSeed = true;
+    public int floorSeedStep = 10007;
 
-    // ===== 階段 =====
     [Header("Stairs Settings")]
     public Tilemap stairTilemap;
     public Tile stairUpTile;
     public Tile stairDownTile;
 
     [Header("Stairs Count")]
-    [Range(1,5)] public int entranceStairCount = 2; // 1F⇔2F
-    [Range(1,5)] public int midStairCount = 2;      // 2F⇔3F
-    [Range(1,5)] public int escapeStairCount = 1;   // 1F脱出
-
+    [Range(1, 5)] public int entranceStairCount = 2;
+    [Range(1, 5)] public int midStairCount = 2;
+    [Range(1, 5)] public int escapeStairCount = 1;
 
     [Header("Mid Stairs (2<->3 shared position)")]
-    public bool useMidStair = true; // ON推奨（2F下り=3F上り）
-    // midは1個固定（ItemManagerに保存）
+    public bool useMidStair = true;
 
     [Header("Player Spawn")]
-    public Vector2Int spawnOffsetFromStair = new Vector2Int(1, 0); // 階段の右隣から開始
+    public Vector2Int spawnOffsetFromStair = new Vector2Int(1, 0);
 
     [Header("Treasure (Floor 3 only)")]
     public Tilemap treasureTilemap;
     public Tile treasureTile;
 
-    // 直近スポーン基準にした階段セル（床保証にも使う）
     Vector2Int lastSpawnStairCell;
 
-    // ===== 宝箱レア設定 =====
+    // ★追加：階段配置責務を分離
+    StairPlacer stairPlacer;
+
     [Serializable]
     public class ChestRarityWeight
     {
@@ -98,10 +94,9 @@ public class CaveGenerator : MonoBehaviour
 
         int floor = ItemManager.Instance != null ? ItemManager.Instance.currentFloor : 1;
 
-        // ===== seed固定（同じrun中は同じ配置 / floorで差分）=====
+        // seed固定（同じrun中は同じ配置 / floorで差分）
         if (useRunSeed && ItemManager.Instance != null)
         {
-            // runSave.seed が 0 なら「新規ラン」扱いで新しいseedを作る
             if (!ItemManager.Instance.hasRunSave || ItemManager.Instance.runSave == null || ItemManager.Instance.runSave.seed == 0)
             {
                 int newSeed = Environment.TickCount;
@@ -122,10 +117,10 @@ public class CaveGenerator : MonoBehaviour
         PlaceChests();
         PlaceEnemies();
 
-        PlaceTreasureIfNeeded(); // 3Fのみ
-        PlaceAllStairs();
-
-        PlacePlayer();          // 最後：階段横にスポーン
+        PlaceTreasureIfNeeded();    // 3Fのみ
+        PlaceAllStairs_Refactored();
+        PlacePlayer();              // 最後：階段横にスポーン
+        HealOnDungeonEnterIfNeeded();// その後に回復（入場時のみ）
     }
 
     // =========================
@@ -133,12 +128,10 @@ public class CaveGenerator : MonoBehaviour
     // =========================
     void RandomFill()
     {
-        // ① まず全て床で埋める
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
                 map[x, y] = 0;
 
-        // ② 外周は壁 / 内側はfillPercentで壁
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
@@ -281,8 +274,6 @@ public class CaveGenerator : MonoBehaviour
 
             Vector2Int cell = new Vector2Int(x, y);
 
-            // 階段とかお宝と被りたくないならここでチェック追加してもOK
-
             var r = RollChestRarity();
             chestRarityByCell[cell] = r;
 
@@ -303,7 +294,6 @@ public class CaveGenerator : MonoBehaviour
     {
         if (enemyPrefab == null) return;
 
-        // 以前の生成敵が残ってたら掃除（タグ Enemy 推奨）
         var old = GameObject.FindGameObjectsWithTag("Enemy");
         foreach (var e in old) Destroy(e);
 
@@ -317,7 +307,6 @@ public class CaveGenerator : MonoBehaviour
 
             if (map[x, y] != 0) continue;
 
-            // 宝箱セルは避ける
             if (chestTilemap != null && chestTilemap.GetTile(new Vector3Int(x, y, 0)) != null) continue;
 
             Vector3 worldPos = groundTilemap.GetCellCenterWorld(new Vector3Int(x, y, 0));
@@ -326,11 +315,6 @@ public class CaveGenerator : MonoBehaviour
             placed++;
         }
     }
-
-    // =========================
-    // Stairs
-    // =========================
-
 
     // =========================
     // Player spawn
@@ -344,10 +328,8 @@ public class CaveGenerator : MonoBehaviour
             return;
         }
 
-        // 階段＋周囲を床にする（壁に埋まる保険）
         ForceCellAndNeighborsToFloor(lastSpawnStairCell);
 
-        // 階段の横にスポーン（オフセットが壁なら床化）
         Vector2Int spawnCell = lastSpawnStairCell + spawnOffsetFromStair;
         spawnCell.x = Mathf.Clamp(spawnCell.x, 1, width - 2);
         spawnCell.y = Mathf.Clamp(spawnCell.y, 1, height - 2);
@@ -356,10 +338,6 @@ public class CaveGenerator : MonoBehaviour
 
         Vector3 world = groundTilemap.GetCellCenterWorld(new Vector3Int(spawnCell.x, spawnCell.y, 0));
         player.transform.position = world;
-
-        // HP満タン
-        var hp = player.GetComponent<PlayerHealth>();
-        if (hp != null) hp.SetFullHP();
     }
 
     // =========================
@@ -372,7 +350,6 @@ public class CaveGenerator : MonoBehaviour
 
         if (treasureTilemap == null || treasureTile == null) return;
 
-        // 既に拾ってるなら出さない（あなたの仕様に合わせて）
         if (ItemManager.Instance.runHasTreasure) return;
 
         if (!TryPickInnerFloorCell(out var cell)) return;
@@ -389,7 +366,6 @@ public class CaveGenerator : MonoBehaviour
     {
         cell = default;
 
-        // 外周から2マス内側
         int minX = 2;
         int maxX = width - 3;
         int minY = 2;
@@ -405,7 +381,6 @@ public class CaveGenerator : MonoBehaviour
 
             if (map[x, y] != 0) continue;
 
-            // 宝箱セルは避ける
             if (chestTilemap != null && chestTilemap.GetTile(new Vector3Int(x, y, 0)) != null) continue;
 
             cell = new Vector2Int(x, y);
@@ -460,123 +435,68 @@ public class CaveGenerator : MonoBehaviour
 
         if (chestRarityByCell != null) chestRarityByCell.Clear();
 
-        // Enemy掃除（タグ Enemy 推奨）
         var enemies = GameObject.FindGameObjectsWithTag("Enemy");
         foreach (var e in enemies)
             Destroy(e);
     }
 
-    void PlaceAllStairs()
+    // =========================
+    // Stairs (refactored)
+    // =========================
+    void PlaceAllStairs_Refactored()
     {
         if (stairTilemap == null) return;
-
-        stairTilemap.ClearAllTiles();
+        if (ItemManager.Instance == null) return;
 
         int floor = ItemManager.Instance.currentFloor;
 
-        //----------------------------------
-        // 1Fだけ生成（座標決定）
-        //----------------------------------
-        if (floor == 1)
+        bool IsFloor(Vector2Int c)
         {
-            GenerateCells(ItemManager.Instance.entranceStairCells, entranceStairCount);
-            GenerateCells(ItemManager.Instance.midStairCells, midStairCount);
-            GenerateCells(ItemManager.Instance.escapeStairCells, escapeStairCount);
-
-            ItemManager.Instance.SaveRun();
+            if (c.x < 0 || c.x >= width || c.y < 0 || c.y >= height) return false;
+            return map[c.x, c.y] == 0;
         }
 
-        //----------------------------------
-        // 取得
-        //----------------------------------
-
-        var entrance = ItemManager.Instance.entranceStairCells.Select(v => v.ToV2()).ToList();
-        var mid      = ItemManager.Instance.midStairCells.Select(v => v.ToV2()).ToList();
-        var escape   = ItemManager.Instance.escapeStairCells.Select(v => v.ToV2()).ToList();
-
-
-        //----------------------------------
-        // 配置
-        //----------------------------------
-        if (floor == 1)
+        bool IsBlocked(Vector2Int c)
         {
-            PlaceCells(entrance, stairDownTile);
-            PlaceCells(escape, stairUpTile);
-        }
-        else if (floor == 2)
-        {
-            PlaceCells(entrance, stairUpTile);
-            PlaceCells(mid, stairDownTile);
-        }
-        else // 3
-        {
-            PlaceCells(mid, stairUpTile);
+            if (chestTilemap != null && chestTilemap.GetTile(new Vector3Int(c.x, c.y, 0)) != null) return true;
+            if (treasureTilemap != null && treasureTilemap.GetTile(new Vector3Int(c.x, c.y, 0)) != null) return true;
+            return false;
         }
 
-        stairTilemap.RefreshAllTiles();
+        stairPlacer = new StairPlacer(
+            stairTilemap,
+            stairUpTile,
+            stairDownTile,
+            width,
+            height,
+            isFloorCell: IsFloor,
+            forceCellAndNeighborsToFloor: ForceCellAndNeighborsToFloor,
+            isBlockedCell: IsBlocked
+        );
 
-        if (floor == 1)
-        {
-            PlaceCells(entrance, stairDownTile);
-            PlaceCells(escape, stairUpTile);
+        stairPlacer.PlaceAllStairsAndDecideSpawn(
+            floor,
+            entranceStairCount,
+            midStairCount,
+            escapeStairCount
+        );
 
-            // ★ここが重要：2F→1Fで戻ってきた時は Entrance の横に出す
-            if (ItemManager.Instance != null
-                && ItemManager.Instance.hasLastStairCell
-                && ItemManager.Instance.lastStairKind == "Entrance")
-            {
-                lastSpawnStairCell = ItemManager.Instance.lastStairCell;
-            }
-            else
-            {
-                // 初回開始は脱出階段（上り）の横から
-                if (escape.Count > 0)
-                    lastSpawnStairCell = escape[UnityEngine.Random.Range(0, escape.Count)];
-                else if (entrance.Count > 0)
-                    lastSpawnStairCell = entrance[0];
-                else
-                    lastSpawnStairCell = new Vector2Int(width / 2, height / 2);
-            }
-        }
-        else
-        {
-            if (ItemManager.Instance.hasLastStairCell)
-                lastSpawnStairCell = ItemManager.Instance.lastStairCell;
-            else if (floor == 2 && entrance.Count > 0)
-                lastSpawnStairCell = entrance[0];
-            else if (floor == 3 && mid.Count > 0)
-                lastSpawnStairCell = mid[0];
-            else
-                lastSpawnStairCell = new Vector2Int(width / 2, height / 2);
-        }
+        lastSpawnStairCell = stairPlacer.LastSpawnStairCell;
     }
 
-    void GenerateCells(List<ItemManager.Vector2IntSerializable> list, int count)
+    void HealOnDungeonEnterIfNeeded()
     {
-        list.Clear();
+        if (ItemManager.Instance == null) return;
+        if (!ItemManager.Instance.healOnNextDungeonEnter) return;
 
-        int safety = 9999;
+        GameObject player = GameObject.FindWithTag("Player");
+        if (player == null) return;
 
-        while (list.Count < count && safety-- > 0)
-        {
-            if (!TryPickInnerFloorCell(out var c)) break;
+        var hp = player.GetComponent<PlayerHealth>();
+        if (hp != null) hp.SetFullHP();
 
-            if (list.Any(v => v.x == c.x && v.y == c.y)) continue;
-
-            list.Add(new ItemManager.Vector2IntSerializable(c));
-        }
+        ItemManager.Instance.healOnNextDungeonEnter = false;
+        ItemManager.Instance.SaveRun();
     }
-
-    void PlaceCells(IEnumerable<Vector2Int> cells, Tile tile)
-    {
-        if (tile == null) return;
-
-        foreach (var c in cells)
-        {
-            ForceCellAndNeighborsToFloor(c);
-            stairTilemap.SetTile((Vector3Int)c, tile);
-        }
-    }
-
 
 }

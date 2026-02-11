@@ -9,37 +9,36 @@ public class ItemManager : MonoBehaviour
 {
     public static ItemManager Instance;
 
+    // ★追加：型安全な階段種別
+    public enum StairKind { None, Entrance, Mid, Escape }
+
     public List<Vector2IntSerializable> midStairCells = new List<Vector2IntSerializable>();
 
     // ラン中にお宝を所持しているか（出口でクリア判定に使う）
     public bool runHasTreasure = false;
 
+    // 入場時に1回だけ回復する
+    public bool healOnNextDungeonEnter = false;
+
     [Header("Floor Progress")]
     public int currentFloor = 1;
-    public int maxFloor = 3; // とりあえず3層想定（後で増やせる）
+    public int maxFloor = 3;
 
     [Header("Database")]
     public ItemDatabase database;
 
     [Header("Treasure State")]
-    public bool treasurePicked = false; // 3層のお宝を取ったか（再出現防止）
+    public bool treasurePicked = false;
 
     [Header("Stairs (runtime)")]
     public Vector2Int lastStairCell = Vector2Int.zero;
     public bool hasLastStairCell = false;
 
-    // 1層で決まる入口階段セル（2〜3個）
     public List<Vector2IntSerializable> entranceStairCells = new List<Vector2IntSerializable>();
     public List<Vector2IntSerializable> escapeStairCells = new List<Vector2IntSerializable>();
 
-    // 2F下り＝3F上り（同位置）を1個だけ保存
-    public bool hasMidStairCell = false;
-    public Vector2IntSerializable midStairCell = new Vector2IntSerializable(0, 0);
-
-    //public enum StairKind { None, Entrance, Mid, Escape }
-    //public StairKind lastStairKind = StairKind.None;
-    public string lastStairKind = "None"; // "Entrance" / "Mid" / "Escape"
-    
+    // ★変更：string → enum
+    public StairKind lastStairKind = StairKind.None;
 
     [Serializable]
     public class FloorSeedData
@@ -71,7 +70,6 @@ public class ItemManager : MonoBehaviour
     // floor -> opened chest cells
     private Dictionary<int, HashSet<Vector2Int>> openedChestsMap = new Dictionary<int, HashSet<Vector2Int>>();
 
-
     // =========================
     // 永続：図鑑（絶対消えない）
     // =========================
@@ -85,43 +83,27 @@ public class ItemManager : MonoBehaviour
     // =========================
     // ラン：持ち込み／保留Loot
     // =========================
-    public List<ItemData> runLoadout = new List<ItemData>();      // 最大3
-    public List<ItemData> runPendingLoot = new List<ItemData>();  // 宝箱で出たが未確定（Resultで見せる）
+    public List<ItemData> runLoadout = new List<ItemData>();
+    public List<ItemData> runPendingLoot = new List<ItemData>();
 
-    // 死亡回数（Game内）… 3回目で完全リセット
     public int deathCount = 0;
 
-    // =========================
-    // ラン候補20枠（今回出る一覧）
-    // =========================
     [Header("Loadout Candidates (per run)")]
     public int poolSize = 20;
     public List<string> runCandidateIds = new List<string>();
 
-    // =========================
-    // このランで「見えた」候補ID（開始時は黒塗り、入手で見える）
-    // =========================
     [Header("Run Discovered (reveal in loadout)")]
     public HashSet<string> runDiscoveredIds = new HashSet<string>();
 
-    // =========================
-    // 宝箱ドロップ（ラン全体で重複なし）
-    // =========================
     [Header("Chest Drop Pool (unique per run)")]
     public List<string> remainingChestDropIds = new List<string>();
 
-    // =========================
-    // 初期ボーナス
-    // =========================
     [Header("Starting Bonus (unlock + owned)")]
-    public List<string> startingOwnedIds = new List<string>(); // 最初から所持（ロードアウトで選べる）
-    public List<string> startingUnlockOnlyIds = new List<string>(); // 図鑑だけ解放
+    public List<string> startingOwnedIds = new List<string>();
+    public List<string> startingUnlockOnlyIds = new List<string>();
     public bool applyStartingBonusOnce = true;
     private const string StartingBonusAppliedKey = "StartingBonusApplied_v1";
 
-    // =========================
-    // 中断復帰
-    // =========================
     public bool hasRunSave = false;
     public RunSaveData runSave = new RunSaveData();
 
@@ -132,31 +114,32 @@ public class ItemManager : MonoBehaviour
         public float timer = 0f;
         public int deathCount = 0;
         public bool treasurePicked = false;
+        public bool healOnNextDungeonEnter = false;
         public bool hasLastStairCell = false;
-        public bool hasMidStairCell = false;
-        public string lastStairKind = "None";
+        public Vector2IntSerializable lastStairCell = new Vector2IntSerializable(0, 0);
+
+        public StairKind lastStairKind = StairKind.None;
+
         public List<Vector2IntSerializable> midStairCells = new List<Vector2IntSerializable>();
-        public Vector2IntSerializable midStairCell = new Vector2IntSerializable(0, 0);
         public List<string> runLoadoutIds = new List<string>();
         public List<string> runPendingLootIds = new List<string>();
-        public Vector2IntSerializable lastStairCell = new Vector2IntSerializable(0,0);
+
         public List<Vector2IntSerializable> entranceStairCells = new List<Vector2IntSerializable>();
         public List<Vector2IntSerializable> escapeStairCells = new List<Vector2IntSerializable>();
+
         public List<string> runCandidateIds = new List<string>();
         public List<string> runDiscoveredIds = new List<string>();
         public List<string> remainingChestDropIds = new List<string>();
+
         public List<FloorSeedData> floorSeeds = new List<FloorSeedData>();
         public List<FloorOpenedChestsData> openedChestsByFloor = new List<FloorOpenedChestsData>();
-        public int currentFloor = 1;
 
+        public int currentFloor = 1;
 
         public int seed = 0;
         public bool runHasTreasure = false;
     }
 
-    // =========================
-    // JSON（図鑑/進行/ラン）
-    // =========================
     [Serializable]
     public class EncyclopediaSave
     {
@@ -187,11 +170,9 @@ public class ItemManager : MonoBehaviour
 
             ApplyStartingBonus(force: false);
 
-            // 旧データ互換：候補が無いなら生成
             if (runCandidateIds == null || runCandidateIds.Count == 0)
                 BuildRunCandidates(poolSize);
 
-            // 旧データ互換：宝箱プールが無いなら候補から作る
             if (remainingChestDropIds == null || remainingChestDropIds.Count == 0)
                 BuildChestDropPoolFromCandidates();
         }
@@ -201,18 +182,27 @@ public class ItemManager : MonoBehaviour
         }
     }
 
-    // =========================
-    // アイテム検索
-    // =========================
+    // ★追加：セル→階段種別判定（Tilemap依存を外す）
+    public StairKind GetStairKindAtCell(Vector2Int cell)
+    {
+        if (entranceStairCells != null && entranceStairCells.Any(v => v.x == cell.x && v.y == cell.y))
+            return StairKind.Entrance;
+
+        if (midStairCells != null && midStairCells.Any(v => v.x == cell.x && v.y == cell.y))
+            return StairKind.Mid;
+
+        if (escapeStairCells != null && escapeStairCells.Any(v => v.x == cell.x && v.y == cell.y))
+            return StairKind.Escape;
+
+        return StairKind.None;
+    }
+
     public ItemData FindByID(string id)
     {
         if (database == null || database.allItems == null) return null;
         return database.allItems.FirstOrDefault(i => i != null && i.id == id);
     }
 
-    // =========================
-    // 初期ボーナス付与
-    // =========================
     void ApplyStartingBonus(bool force)
     {
         if (database == null || database.allItems == null) return;
@@ -249,9 +239,6 @@ public class ItemManager : MonoBehaviour
         }
     }
 
-    // =========================
-    // 図鑑アンロック（永続）
-    // =========================
     public void UnlockEncyclopedia(ItemData item)
     {
         if (item == null) return;
@@ -259,9 +246,6 @@ public class ItemManager : MonoBehaviour
             SaveEncyclopedia();
     }
 
-    // =========================
-    // 所持追加（進行）
-    // =========================
     public void AddPermanent(ItemData item)
     {
         if (item == null) return;
@@ -276,9 +260,6 @@ public class ItemManager : MonoBehaviour
         }
     }
 
-    // =========================
-    // このIDをどこかに持ってるか（所持/持ち込み/保留）
-    // =========================
     public bool HasItemAnywhere(string id)
     {
         if (string.IsNullOrEmpty(id)) return false;
@@ -290,26 +271,17 @@ public class ItemManager : MonoBehaviour
         return inOwned || inLoadout || inPending;
     }
 
-    // =========================
-    // 宝箱：未確定Lootへ追加（＝このランで“見える”にする）
-    // =========================
     public void AddPendingLoot(ItemData item)
     {
         if (item == null) return;
 
-        // 図鑑は永続で解放（あなたの仕様）
         UnlockEncyclopedia(item);
-
-        // ロードアウト20枠の黒塗り解除（このランで見えた）
         runDiscoveredIds.Add(item.id);
 
         runPendingLoot.Add(item);
         SaveRun();
     }
 
-    // =========================
-    // 逃走成功（出口）
-    // =========================
     public void OnEscapeSuccess()
     {
         foreach (var it in runPendingLoot)
@@ -330,9 +302,6 @@ public class ItemManager : MonoBehaviour
         ClearRunSave();
     }
 
-    // =========================
-    // 死亡処理
-    // =========================
     public void OnPlayerDied()
     {
         runHasTreasure = false;
@@ -356,9 +325,6 @@ public class ItemManager : MonoBehaviour
         SceneManager.LoadScene("TitleScene");
     }
 
-    // =========================
-    // 完全リセット（図鑑以外を消す）
-    // =========================
     public void FullResetProgressKeepEncyclopedia()
     {
         ownedPermanent.Clear();
@@ -385,12 +351,8 @@ public class ItemManager : MonoBehaviour
         hasLastStairCell = false;
         lastStairCell = Vector2Int.zero;
         entranceStairCells.Clear();
-
     }
 
-    // =========================
-    // NewGame / Continue
-    // =========================
     public void NewGame()
     {
         FullResetProgressKeepEncyclopedia();
@@ -408,8 +370,6 @@ public class ItemManager : MonoBehaviour
         if (openedChestsMap == null) openedChestsMap = new Dictionary<int, HashSet<Vector2Int>>();
         openedChestsMap.Clear();
 
-
-        // 候補20枠を作る（この時点では黒塗り：runDiscoveredIdsは空）
         BuildRunCandidates(poolSize);
         BuildChestDropPoolFromCandidates();
 
@@ -436,25 +396,16 @@ public class ItemManager : MonoBehaviour
         LoadRun();
         LoadProgress();
 
-        // 旧セーブ互換：候補が無ければ生成
         if (runCandidateIds == null || runCandidateIds.Count == 0)
-        {
             BuildRunCandidates(poolSize);
-        }
 
-        // 宝箱プールが無ければ候補から作る
         if (remainingChestDropIds == null || remainingChestDropIds.Count == 0)
-        {
             BuildChestDropPoolFromCandidates();
-        }
 
         SaveRun();
         SceneManager.LoadScene("LoadoutScene");
     }
 
-    // =========================
-    // 候補20枠を作る（重複なし・DBからランダム）
-    // =========================
     public void BuildRunCandidates(int totalCount)
     {
         if (database == null || database.allItems == null)
@@ -473,28 +424,22 @@ public class ItemManager : MonoBehaviour
 
         int target = Mathf.Min(totalCount, allIds.Count);
 
-        // 候補をランダムに確定
         runCandidateIds = allIds
             .OrderBy(_ => UnityEngine.Random.value)
             .Take(target)
             .ToList();
 
-        // ★このランの表示は最初は全部黒塗り
         runDiscoveredIds.Clear();
     }
 
     public void BuildChestDropPoolFromCandidates()
     {
-        // runCandidateIds をベースに、宝箱用の残りIDを作る（重複なし）
         remainingChestDropIds = (runCandidateIds ?? new List<string>())
             .Where(id => !string.IsNullOrEmpty(id))
             .Distinct()
             .ToList();
     }
 
-    // =========================
-    // セーブ/ロード
-    // =========================
     public void SaveEncyclopedia()
     {
         var data = new EncyclopediaSave { unlockedIds = encyclopediaUnlockedIds.ToList() };
@@ -561,25 +506,44 @@ public class ItemManager : MonoBehaviour
 
         runSave.deathCount = deathCount;
         runSave.timer = GameTimer.Instance != null ? GameTimer.Instance.GetTime() : runSave.timer;
+
+        runSave.currentFloor = currentFloor;
+
         runSave.hasLastStairCell = hasLastStairCell;
         runSave.lastStairCell = new Vector2IntSerializable(lastStairCell);
-        runSave.entranceStairCells = entranceStairCells ?? new List<Vector2IntSerializable>();
         runSave.lastStairKind = lastStairKind;
+
+        runSave.entranceStairCells = entranceStairCells ?? new List<Vector2IntSerializable>();
+        runSave.escapeStairCells = escapeStairCells ?? new List<Vector2IntSerializable>();
+        runSave.midStairCells = midStairCells ?? new List<Vector2IntSerializable>();
 
         runSave.runLoadoutIds = runLoadout.Where(x => x != null).Select(x => x.id).ToList();
         runSave.runPendingLootIds = runPendingLoot.Where(x => x != null).Select(x => x.id).ToList();
-        runSave.runCandidateIds = runCandidateIds.ToList();
-        runSave.runDiscoveredIds = runDiscoveredIds.ToList();
-        runSave.remainingChestDropIds = remainingChestDropIds.ToList();
-        runSave.escapeStairCells = escapeStairCells.ToList();
-        runSave.hasMidStairCell = hasMidStairCell;
-        runSave.midStairCell = midStairCell;
-        runSave.midStairCells = midStairCells;
+
+        runSave.runCandidateIds = (runCandidateIds ?? new List<string>()).ToList();
+        runSave.runDiscoveredIds = (runDiscoveredIds ?? new HashSet<string>()).ToList();
+        runSave.remainingChestDropIds = (remainingChestDropIds ?? new List<string>()).ToList();
 
         runSave.runHasTreasure = runHasTreasure;
         runSave.treasurePicked = treasurePicked;
+        runSave.healOnNextDungeonEnter = healOnNextDungeonEnter;
 
+        // seed（run全体seed）
         if (seed != 0) runSave.seed = seed;
+
+        // floorSeedMap 保存
+        runSave.floorSeeds = new List<FloorSeedData>();
+        foreach (var kv in floorSeedMap)
+            runSave.floorSeeds.Add(new FloorSeedData { floor = kv.Key, seed = kv.Value });
+
+        // openedChestsMap 保存
+        runSave.openedChestsByFloor = new List<FloorOpenedChestsData>();
+        foreach (var kv in openedChestsMap)
+        {
+            var d = new FloorOpenedChestsData { floor = kv.Key };
+            d.openedChests = kv.Value.Select(v => new Vector2IntSerializable(v)).ToList();
+            runSave.openedChestsByFloor.Add(d);
+        }
 
         File.WriteAllText(RunPath, JsonUtility.ToJson(runSave, true));
     }
@@ -598,22 +562,6 @@ public class ItemManager : MonoBehaviour
 
         if (!File.Exists(RunPath)) return;
 
-        runSave.currentFloor = currentFloor;
-
-        // floorSeeds 保存
-        runSave.floorSeeds = new List<FloorSeedData>();
-        foreach (var kv in floorSeedMap)
-            runSave.floorSeeds.Add(new FloorSeedData { floor = kv.Key, seed = kv.Value });
-
-        // openedChestsByFloor 保存
-        runSave.openedChestsByFloor = new List<FloorOpenedChestsData>();
-        foreach (var kv in openedChestsMap)
-        {
-            var d = new FloorOpenedChestsData { floor = kv.Key };
-            d.openedChests = kv.Value.Select(v => new Vector2IntSerializable(v)).ToList();
-            runSave.openedChestsByFloor.Add(d);
-        }
-
         var json = File.ReadAllText(RunPath);
         var data = JsonUtility.FromJson<RunSaveData>(json);
         if (data == null) return;
@@ -621,21 +569,23 @@ public class ItemManager : MonoBehaviour
         hasRunSave = true;
         runSave = data;
 
-        escapeStairCells = data.escapeStairCells ?? new List<Vector2IntSerializable>();
+        currentFloor = data.currentFloor <= 0 ? 1 : data.currentFloor;
 
         runHasTreasure = data.runHasTreasure;
+        treasurePicked = data.treasurePicked;
+        healOnNextDungeonEnter = data.healOnNextDungeonEnter;
+
+        hasLastStairCell = data.hasLastStairCell;
+        lastStairCell = data.lastStairCell != null ? data.lastStairCell.ToV2() : Vector2Int.zero;
+        lastStairKind = data.lastStairKind;
+
+        entranceStairCells = data.entranceStairCells ?? new List<Vector2IntSerializable>();
+        escapeStairCells = data.escapeStairCells ?? new List<Vector2IntSerializable>();
+        midStairCells = data.midStairCells ?? new List<Vector2IntSerializable>();
 
         runCandidateIds = data.runCandidateIds ?? new List<string>();
         remainingChestDropIds = data.remainingChestDropIds ?? new List<string>();
         runDiscoveredIds = new HashSet<string>(data.runDiscoveredIds ?? new List<string>());
-        treasurePicked = data.treasurePicked;
-        hasLastStairCell = data.hasLastStairCell;
-        lastStairCell = data.lastStairCell != null ? data.lastStairCell.ToV2() : Vector2Int.zero;
-        entranceStairCells = data.entranceStairCells ?? new List<Vector2IntSerializable>();
-        hasMidStairCell = data.hasMidStairCell;
-        midStairCell = data.midStairCell ?? new Vector2IntSerializable(0, 0);
-        lastStairKind = data.lastStairKind ?? "None";
-        midStairCells = data.midStairCells ?? new List<Vector2IntSerializable>();
 
         foreach (var id in data.runLoadoutIds ?? new List<string>())
         {
@@ -650,8 +600,6 @@ public class ItemManager : MonoBehaviour
         }
 
         deathCount = data.deathCount;
-
-        currentFloor = data.currentFloor <= 0 ? 1 : data.currentFloor;
 
         // seed復元
         floorSeedMap = new Dictionary<int, int>();
@@ -681,37 +629,37 @@ public class ItemManager : MonoBehaviour
         hasRunSave = false;
         runHasTreasure = false;
         treasurePicked = false;
+        healOnNextDungeonEnter = false;
         hasLastStairCell = false;
         lastStairCell = Vector2Int.zero;
-        entranceStairCells.Clear();
+        lastStairKind = StairKind.None;
 
+        entranceStairCells.Clear();
+        escapeStairCells.Clear();
+        midStairCells.Clear();
 
         runSave = new RunSaveData();
         if (File.Exists(RunPath)) File.Delete(RunPath);
 
         runLoadout.Clear();
         runPendingLoot.Clear();
+
         currentFloor = 1;
 
         if (floorSeedMap != null) floorSeedMap.Clear();
         if (openedChestsMap != null) openedChestsMap.Clear();
 
-        // ラン専用の見えたフラグも消す
         runDiscoveredIds.Clear();
     }
-    // =========================
-    // 宝箱ドロップ：箱レア以上のみ / 重複なし / 既所持ならnull（空箱扱い）
-    // =========================
+
     public ItemData DrawFromChest(ItemRarity chestRarity)
     {
-        // 念のため：宝箱プールが空なら候補から作る
         if (remainingChestDropIds == null || remainingChestDropIds.Count == 0)
             BuildChestDropPoolFromCandidates();
 
         if (remainingChestDropIds == null || remainingChestDropIds.Count == 0)
             return null;
 
-        // 箱レア以上のアイテムだけ抽選対象
         var eligibleIds = remainingChestDropIds
             .Select(id => FindByID(id))
             .Where(item => item != null && item.rarity >= chestRarity)
@@ -719,15 +667,11 @@ public class ItemManager : MonoBehaviour
             .ToList();
 
         if (eligibleIds.Count == 0)
-            return null; // この箱で出せるものが無い＝空箱
+            return null;
 
-        // 1つ選ぶ
         string pickedId = eligibleIds[UnityEngine.Random.Range(0, eligibleIds.Count)];
-
-        // プールから削除（重複なし）
         remainingChestDropIds.RemoveAll(x => x == pickedId);
 
-        // 既所持なら空箱扱い（あなたの仕様）
         if (HasItemAnywhere(pickedId))
             return null;
 
@@ -737,11 +681,7 @@ public class ItemManager : MonoBehaviour
     public void GoNextFloor()
     {
         currentFloor++;
-
-        // ラン用の状態は必要に応じてリセット
         runHasTreasure = false;
-
-        // 次フロア開始（同じGameSceneでOK）
         SceneManager.LoadScene("GameScene");
     }
 
@@ -762,10 +702,10 @@ public class ItemManager : MonoBehaviour
         if (floorSeedMap == null) floorSeedMap = new Dictionary<int, int>();
         floorSeedMap.Clear();
 
-        // 1..maxFloor を固定seed化
         for (int f = 1; f <= maxFloor; f++)
             floorSeedMap[f] = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
     }
+
     private HashSet<Vector2Int> GetOpenedSet(int floor)
     {
         if (openedChestsMap == null) openedChestsMap = new Dictionary<int, HashSet<Vector2Int>>();
@@ -801,10 +741,7 @@ public class ItemManager : MonoBehaviour
 
         currentFloor = next;
 
-        SaveRun(); // floor・opened・seedを保存してから移動
+        SaveRun();
         SceneManager.LoadScene("GameScene");
     }
-
-
-
 }

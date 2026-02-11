@@ -265,7 +265,9 @@ public class LoadoutGridUI : MonoBehaviour
             GameTimer.Instance.ResetTimer();
             GameTimer.Instance.StartTimer();
         }
-
+        ItemManager.Instance.healOnNextDungeonEnter = true;
+        ItemManager.Instance.SaveRun();
+        
         SceneManager.LoadScene("GameScene");
     }
 

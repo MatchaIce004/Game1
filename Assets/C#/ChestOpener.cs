@@ -4,7 +4,7 @@ using UnityEngine.Tilemaps;
 
 public class ChestOpener : MonoBehaviour
 {
-    public float openDistance = 1f; // 使わないなら消してOK
+    public float openDistance = 1f;
 
     CaveGenerator gen;
 

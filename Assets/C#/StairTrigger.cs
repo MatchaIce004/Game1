@@ -1,124 +1,112 @@
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Tilemaps;
 using UnityEngine.SceneManagement;
 
 public class StairTrigger : MonoBehaviour
 {
-    CaveGenerator gen;
-
     [Header("Hold Time (seconds)")]
-    public float holdTime = 2.0f;          // ★階段に何秒乗れば発動するか
-    public float escapeLockSeconds = 5f;   // ★1F脱出ロック時間
+    public float holdTime = 2.0f;
+    public float escapeLockSeconds = 5f;
+
+    [Header("Grid Reference")]
+    public Grid grid; // シーンのGridをアサイン推奨（未設定なら自動検索）
 
     float stayTimer = 0f;
-    Vector3Int currentCell;
+    Vector3Int currentCell3;
     bool onStair = false;
 
-    void Start()
+    void Awake()
     {
-        gen = FindObjectOfType<CaveGenerator>();
+        if (grid == null) grid = FindObjectOfType<Grid>();
     }
 
     void Update()
     {
-        if (gen == null || gen.stairTilemap == null) return;
         if (ItemManager.Instance == null) return;
+        if (grid == null) return;
 
-        Vector3Int cell = gen.stairTilemap.WorldToCell(transform.position);
-        TileBase tile = gen.stairTilemap.GetTile(cell);
+        Vector3Int cell3 = grid.WorldToCell(transform.position);
+        Vector2Int cell = new Vector2Int(cell3.x, cell3.y);
 
-        // ===== 階段に乗っていない =====
-        if (tile == null)
+        var kind = ItemManager.Instance.GetStairKindAtCell(cell);
+
+        if (kind == ItemManager.StairKind.None)
         {
             stayTimer = 0f;
             onStair = false;
             return;
         }
 
-        // ===== 同じ階段に乗り続けている =====
-        if (onStair && cell == currentCell)
+        if (onStair && cell3 == currentCell3)
         {
             stayTimer += Time.deltaTime;
 
-            // デバッグ表示
-            // Debug.Log($"移動まで {holdTime - stayTimer:F1}");
-
             if (stayTimer >= holdTime)
             {
-                TriggerStair(tile, cell);
+                TriggerStair(kind, cell);
                 stayTimer = 0f;
                 onStair = false;
             }
-
             return;
         }
 
-        // ===== 新しく階段に乗った =====
         onStair = true;
-        currentCell = cell;
+        currentCell3 = cell3;
         stayTimer = 0f;
     }
 
-    // =========================
-    // 階段処理本体
-    // =========================
-    void TriggerStair(TileBase tile, Vector3Int cell)
+    void TriggerStair(ItemManager.StairKind kind, Vector2Int cell)
     {
         int floor = ItemManager.Instance.currentFloor;
 
-        // 下り階段（入口/中間）
-        if (gen.stairDownTile != null && tile == gen.stairDownTile)
+        // Escape（1Fのみ）
+        if (kind == ItemManager.StairKind.Escape)
         {
-            // 1Fの下り＝Entrance（1F→2F）
-            // 2Fの下り＝Mid（2F→3F）
-            string kind = (floor == 1) ? "Entrance" : "Mid";
+            if (floor != 1) return;
 
             SaveCell(cell, kind);
-            ItemManager.Instance.ChangeFloor(+1);
-            return;
-        }
 
-        // 上り階段（入口/中間/脱出）
-        if (gen.stairUpTile != null && tile == gen.stairUpTile)
-        {
-            // 1Fの上り＝Escape（脱出）
-            // 2F/3Fの上り＝入口側 or 中間側（どっちかは floor で判断）
-            if (floor == 1)
+            if (Time.timeSinceLevelLoad < escapeLockSeconds)
             {
-                SaveCell(cell, "Escape");
-
-                if (Time.timeSinceLevelLoad < escapeLockSeconds)
-                {
-                    Debug.Log("まだ脱出できません");
-                    return;
-                }
-
-                Escape();
+                Debug.Log("まだ脱出できません");
                 return;
             }
 
-            // 2Fの上り＝Entrance（2F→1F）
-            // 3Fの上り＝Mid（3F→2F）
-            string kind = (floor == 2) ? "Entrance" : "Mid";
-
-            SaveCell(cell, kind);
-            ItemManager.Instance.ChangeFloor(-1);
+            Escape();
+            return;
         }
+
+        int delta = 0;
+
+        // Entrance: 1F→2F, 2F→1F
+        if (kind == ItemManager.StairKind.Entrance)
+        {
+            if (floor == 1) delta = +1;
+            else if (floor == 2) delta = -1;
+            else return;
+        }
+
+        // Mid: 2F→3F, 3F→2F
+        if (kind == ItemManager.StairKind.Mid)
+        {
+            if (floor == 2) delta = +1;
+            else if (floor == 3) delta = -1;
+            else return;
+        }
+
+        if (delta == 0) return;
+
+        SaveCell(cell, kind);
+        ItemManager.Instance.ChangeFloor(delta);
     }
 
-    void SaveCell(Vector3Int cell, string kind)
+    void SaveCell(Vector2Int cell, ItemManager.StairKind kind)
     {
         ItemManager.Instance.hasLastStairCell = true;
-        ItemManager.Instance.lastStairCell = new Vector2Int(cell.x, cell.y);
-        ItemManager.Instance.lastStairKind = kind;   // ★追加
+        ItemManager.Instance.lastStairCell = cell;
+        ItemManager.Instance.lastStairKind = kind;
         ItemManager.Instance.SaveRun();
     }
 
-
-    // =========================
-    // 脱出処理
-    // =========================
     void Escape()
     {
         float timeNow = GameTimer.Instance != null ? GameTimer.Instance.GetTime() : 0f;
